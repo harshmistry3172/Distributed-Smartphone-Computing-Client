@@ -173,12 +173,6 @@ public class MainActivity extends AppCompatActivity {
                 String fileName = dis.readUTF();
                 Log.d("CLIENT", "Receiving file: " + fileName + ", size: " + fileSize);
 
-                // Check if the received file is 'testing.txt'
-//                if (!fileName.equals("testing.txt")) {
-//                    Log.e("CLIENT", "Received unexpected file: " + fileName);
-//                    continue; // Skip to the next file
-//                }
-
                 // Set up output streams for file writing
                 File directory = getExternalFilesDir(null); // Adjust as per your file storage requirements
                 if (directory == null) {
@@ -192,7 +186,8 @@ public class MainActivity extends AppCompatActivity {
                 byte[] buffer = new byte[4096];
                 int bytesRead;
                 long totalBytesRead = 0;
-                while (totalBytesRead < fileSize && (bytesRead = dis.read(buffer, 0, (int) Math.min(buffer.length, fileSize - totalBytesRead))) != -1) {
+                while (totalBytesRead < fileSize &&
+                        (bytesRead = dis.read(buffer, 0, (int) Math.min(buffer.length, fileSize - totalBytesRead))) != -1) {
                     fos.write(buffer, 0, bytesRead);
                     totalBytesRead += bytesRead;
                 }
@@ -200,24 +195,28 @@ public class MainActivity extends AppCompatActivity {
                 // Close file output stream
                 fos.close();
                 Log.d("CLIENT", "File received and updated: " + fileToUpdate.getAbsolutePath());
+
+                // Measure time to count words
                 WordCount wordCount = new WordCount();
+                long startTime = System.currentTimeMillis();
                 int ans = wordCount.countWords(fileToUpdate.getAbsolutePath());
+                long endTime = System.currentTimeMillis();
+                long timeTaken = endTime - startTime; // Time taken in milliseconds
 
                 // Display a message on UI thread that file has been received and updated
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
                         tvMessages.append("Received and updated file: " + fileToUpdate.getAbsolutePath() + "\n");
-                        tvMessages.append("Word Count is:" + ans + " \n");
-                        sendMessageToServer("Word Count is" + ans + " \n");
-
+                        tvMessages.append("Word Count is: " + ans + ", Time Taken: " + timeTaken + " ms\n");
+                        sendMessageToServer("Word Count is: " + ans + ", Time Taken: " + timeTaken + " ms\n");
                     }
                 });
             }
 
             // Close input stream and socket
-//            dis.close();
-//            socket.close();
+//        dis.close();
+//        socket.close();
 
         } catch (IOException e) {
             e.printStackTrace();
