@@ -5,22 +5,19 @@ import androidx.appcompat.app.AppCompatActivity;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
-import android.os.Environment;
 import android.util.Log;
-import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 
 import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
+import java.io.DataOutputStream;  // Use DataOutputStream instead of WriterOutputStream
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
@@ -33,12 +30,12 @@ public class MainActivity extends AppCompatActivity {
     EditText etIP, etPort;
     TextView tvMessages;
     Boolean connected = false;
-    EditText etMessage;
-    Button btnSend;
     String SERVER_IP;
     int SERVER_PORT;
-    OutputStream output;
-    InputStream input;
+    DataOutputStream dos , dosSpeed;  // Use DataOutputStream instead of WriterOutputStream
+    DataInputStream dis , disSpeed;  // Keep using DataInputStream for reading input stream
+    public static String LOCAL_IP = "";
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -48,141 +45,150 @@ public class MainActivity extends AppCompatActivity {
         etIP = findViewById(R.id.etIP);
         etPort = findViewById(R.id.etPort);
         tvMessages = findViewById(R.id.tvMessages);
-//        etMessage = findViewById(R.id.etMessage);
-//        btnSend = findViewById(R.id.btnSend);
-
-
+        try {
+            LOCAL_IP = getLocalIpAddress();
+        } catch (UnknownHostException e) {
+            throw new RuntimeException(e);
+        }
         Button btnConnect = findViewById(R.id.btnConnect);
 
-        btnConnect.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                tvMessages.setText("");
-                SERVER_IP = etIP.getText().toString().trim();
-                SERVER_PORT = Integer.parseInt(etPort.getText().toString().trim());
-                connectToServer();
-                btnConnect.setEnabled(false);
-
-            }
+        btnConnect.setOnClickListener(v -> {
+            tvMessages.setText("");
+            SERVER_IP = etIP.getText().toString().trim();
+            SERVER_PORT = Integer.parseInt(etPort.getText().toString().trim());
+            connectToServer();
+            btnConnect.setEnabled(false);
         });
-
-//        btnSend.setOnClickListener(new View.OnClickListener() {
-//            @Override
-//            public void onClick(View v) {
-//                String message = etMessage.getText().toString().trim();
-//                if (!message.isEmpty()) {
-//                    sendMessageToServer(message);
-//                }
-//            }
-//        });
     }
 
-    private void connectToServer() {
-        Thread1 = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    Socket socket = new Socket(SERVER_IP, SERVER_PORT);
-                    output = socket.getOutputStream();
-                    input = socket.getInputStream();
-
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            tvMessages.setText("Connected ");
-                            connected = true;
-                        }
-                    });
-
-                    // Start listening for incoming files from the server
-                    receiveFileFromServer(socket);
-
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        });
-        Thread1.start();
-    }
-
-//    private void sendMessageToServer(final String message) {
-//        Thread thread = new Thread(new Runnable() {
-//            @Override
-//            public void run() {
-//                try {
-//                    OutputStreamWriter writer = new OutputStreamWriter(output, "UTF-8");
-//                    writer.write(message + "\n");
-//                    writer.flush();
-//                    runOnUiThread(new Runnable() {
-//                        @Override
-//                        public void run() {
-//                            tvMessages.append("client: " + message + "\n");
-//                            etMessage.setText("");
-//                        }
-//                    });
-//                } catch (IOException e) {
-//                    e.printStackTrace();
-//                }
+//    private void connectToServer() {
+//        Thread1 = new Thread(() -> {
+//            try (Socket socket = new Socket(SERVER_IP, SERVER_PORT)) {
+//                OutputStream outputStream = socket.getOutputStream();
+//                dos = new DataOutputStream(outputStream);  // Use DataOutputStream
+//                dis = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
+//
+//                runOnUiThread(() -> {
+//                    tvMessages.setText("Connected ");
+//                    connected = true;
+//                });
+//
+//                // Measure computation speed and send it to the server immediately after connection
+//                measureAndSendComputationSpeed();
+//                // Receive file from server
+//                receiveFileFromServer();
+//
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//                Log.e("CLIENT", "Connection error: " + e.getMessage());
 //            }
 //        });
-//        thread.start();
+//        Thread1.start();
 //    }
+private void connectToServer() {
+    Thread1 = new Thread(() -> {
+        try (Socket socket = new Socket(SERVER_IP, SERVER_PORT)) {
+            OutputStream outputStream = socket.getOutputStream();
+            dos = new DataOutputStream(outputStream);  // Use DataOutputStream
+            dis = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
+            dosSpeed = new DataOutputStream(outputStream);  // Use DataOutputStream
+            disSpeed = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
 
-    private void sendMessageToServer(final String message) {
-        if(message != ""){
-            Thread thread = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        if (output != null) {
-                            OutputStreamWriter writer = new OutputStreamWriter(output, "UTF-8");
-                            writer.write(message + "\n");
-                            writer.flush();
-                            runOnUiThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    tvMessages.append("client: " + message + "\n");
-//                                etMessage.setText("");
-                                }
-                            });
-                        } else {
-                            Log.e("CLIENT", "Output stream is null. Message not sent: " + message);
-                        }
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }
+            runOnUiThread(() -> {
+                tvMessages.setText("Connected ");
+                connected = true;
             });
-            thread.start();
+
+            // Create a new thread to measure and send computation speed
+            new Thread(() -> {
+                measureAndSendComputationSpeed();  // Measure and send speed here in a separate thread
+            }).start();
+
+            // Receive file from server
+            receiveFileFromServer();
+
+        } catch (IOException e) {
+            e.printStackTrace();
+            Log.e("CLIENT", "Connection error: " + e.getMessage());
+        }
+    });
+    Thread1.start();
+}
+
+
+    private String getLocalIpAddress() throws UnknownHostException {
+        WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+        assert wifiManager != null;
+        WifiInfo wifiInfo = wifiManager.getConnectionInfo();
+        int ipInt = wifiInfo.getIpAddress();
+        return InetAddress.getByAddress(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(ipInt).array()).getHostAddress();
+    }
+    private void measureAndSendComputationSpeed() {
+        long startTime = System.currentTimeMillis();
+
+        // Perform sample computation (e.g., word count on a dummy string)
+        WordCount wordCount = new WordCount();
+        String dummyText = "This is a test string for measuring computation speed.";
+        for (int i = 0; i < 1000; i++) {
+            wordCount.countWords(dummyText);
+        }
+
+        long endTime = System.currentTimeMillis();
+        long elapsedTime = endTime - startTime;
+
+        // Calculate speed as operations per millisecond
+        double speed = 1000.0 / elapsedTime;
+        Log.d("CLIENT", "Measured computation speed: " + speed + " ops/ms");
+
+        // Send speed to the server
+        sendSpeedAndIPToServer(speed,LOCAL_IP);
+    }
+
+    private void sendSpeedAndIPToServer(double clientSpeed, String ipAddress) {
+        try {
+            // Create the message with both IP and speed
+            String speedData = "Speed: " + clientSpeed + ", IP: " + ipAddress;
+
+            // Send the message to the server using dosSpeed
+            dosSpeed.write(speedData.getBytes());
+            dosSpeed.flush();  // Ensure the message is sent immediately
+
+            // Optionally, you can send a "end of message" separator if the server expects it.
+            dosSpeed.write("\n".getBytes());  // Sending a newline or special separator
+
+            dosSpeed.flush();  // Flush again to make sure the separator is sent immediately
+
+            // Log the sent data
+            Log.d("CLIENT", "Client speed and IP sent to server: " + speedData);
+        } catch (IOException e) {
+            e.printStackTrace();
+            Log.e("CLIENT", "Error sending speed and IP to server: " + e.getMessage());
         }
     }
 
 
-    private void receiveFileFromServer(Socket socket) {
+    private void receiveFileFromServer() {
         try {
-            // Set up input streams
-            DataInputStream dis = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
-
             // Receive number of files
             int numberOfFiles = dis.readInt();
             Log.d("CLIENT", "Number of files to receive: " + numberOfFiles);
 
-            // Receive each file
+            // Receive files
             for (int i = 0; i < numberOfFiles; i++) {
-                long fileSize = dis.readLong();
+                long fileSize = dis.readLong();  // Use readLong to read file size (use readInt if it's an integer size)
                 String fileName = dis.readUTF();
                 Log.d("CLIENT", "Receiving file: " + fileName + ", size: " + fileSize);
 
-                // Set up output streams for file writing
-                File directory = getExternalFilesDir(null); // Adjust as per your file storage requirements
+                // Setup for writing file
+                File directory = getExternalFilesDir(null);
                 if (directory == null) {
-                    Log.e("CLIENT", "Failed to get external files directory.");
+                    Log.e("CLIENT", "Failed to access external files directory.");
                     return;
                 }
-                File fileToUpdate = new File(directory, "testing.txt");
+                File fileToUpdate = new File(directory, fileName);
                 FileOutputStream fos = new FileOutputStream(fileToUpdate);
 
-                // Read file data from input stream and write to file
+                // Read and write file chunks
                 byte[] buffer = new byte[4096];
                 int bytesRead;
                 long totalBytesRead = 0;
@@ -191,36 +197,41 @@ public class MainActivity extends AppCompatActivity {
                     fos.write(buffer, 0, bytesRead);
                     totalBytesRead += bytesRead;
                 }
-
-                // Close file output stream
                 fos.close();
-                Log.d("CLIENT", "File received and updated: " + fileToUpdate.getAbsolutePath());
+                Log.d("CLIENT", "File received: " + fileToUpdate.getAbsolutePath());
 
-                // Measure time to count words
+                // Measure time for word count
                 WordCount wordCount = new WordCount();
                 long startTime = System.currentTimeMillis();
-                int ans = wordCount.countWords(fileToUpdate.getAbsolutePath());
+                int wordCountResult = wordCount.countWords(fileToUpdate.getAbsolutePath());
                 long endTime = System.currentTimeMillis();
-                long timeTaken = endTime - startTime; // Time taken in milliseconds
+                long computationTime = endTime - startTime;
 
-                // Display a message on UI thread that file has been received and updated
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        tvMessages.append("Received and updated file: " + fileToUpdate.getAbsolutePath() + "\n");
-                        tvMessages.append("Word Count is: " + ans + ", Time Taken: " + timeTaken + " ms\n");
-                        sendMessageToServer("Word Count is: " + ans + ", Time Taken: " + timeTaken + " ms\n");
-                    }
+                // Display results on UI
+                runOnUiThread(() -> {
+                    tvMessages.append("File received: " + fileToUpdate.getAbsolutePath() + "\n");
+                    tvMessages.append("Word Count: " + wordCountResult + ", Time: " + computationTime + " ms\n");
                 });
-            }
 
-            // Close input stream and socket
-//        dis.close();
-//        socket.close();
+                // Send results back to server
+                sendResultsToServer(wordCountResult, computationTime);
+            }
 
         } catch (IOException e) {
             e.printStackTrace();
             Log.e("CLIENT", "Error receiving file: " + e.getMessage());
+        }
+    }
+
+    private void sendResultsToServer(int wordCountResult, long computationTime) {
+        try {
+            String results = "Word Count: " + wordCountResult + ", Time: " + computationTime + " ms";
+            dos.write(results.getBytes());  // Send the results after processing the file
+            dos.flush();
+            Log.d("CLIENT", "Results sent to server: " + results);
+        } catch (IOException e) {
+            e.printStackTrace();
+            Log.e("CLIENT", "Error sending results: " + e.getMessage());
         }
     }
 
